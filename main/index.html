@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8">
+  <title>Monitor da Planta</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; background: #f0f0f0; text-align: center; }
+    .card {
+      background: white; padding: 20px; margin: 20px auto;
+      width: 95%; max-width: 800px; border-radius: 10px;
+      box-shadow: 0 0 10px #aaa;
+    }
+    canvas { width: 100% !important; height: 350px !important; }
+    .row { display: flex; justify-content: space-around; flex-wrap: wrap; margin-bottom: 15px; }
+    .kpi { min-width: 150px; padding: 10px; background: #fafafa; border-radius: 8px; margin: 5px; }
+    .kpi span { font-size: 1.3em; font-weight: bold; }
+    .controls { margin-top: 10px; }
+    input[type="number"] { width: 80px; padding: 5px; margin-right: 8px; }
+    button { padding: 6px 12px; border: none; border-radius: 5px; cursor: pointer; margin: 4px; }
+    button:hover { background: #e0e0ff; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h2>Monitor da Planta</h2>
+
+    <div class="row">
+      <div class="kpi">ADC: <span id="adc">--</span></div>
+      <div class="kpi">Tensão: <span id="voltage">--</span> V</div>
+      <div class="kpi">Controle (Duty): <span id="duty">--</span> %</div>
+    </div>
+
+    <div class="controls">
+      <label for="dutyInp">Duty (%):</label>
+      <input id="dutyInp" type="number" step="0.1" min="0" max="100" value="40.0" />
+      <button id="btnSet">Aplicar</button>
+      <button onclick="downloadCSV()">Baixar Dados</button>
+    </div>
+
+    <canvas id="myChart"></canvas>
+  </div>
+
+  <script>
+    const ctx = document.getElementById('myChart').getContext('2d');
+    const chart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: [],
+        datasets: [
+          {
+            label: 'Tensão (V)',
+            data: [],
+            borderColor: 'blue',
+            fill: false,
+            yAxisID: 'yV',
+            tension: 0.1
+          },
+          {
+            label: 'Sinal de Controle (Duty %)',
+            data: [],
+            borderColor: 'red',
+            fill: false,
+            yAxisID: 'yDuty',
+            tension: 0.1
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        animation: false, 
+        interaction: { mode: 'index', intersect: false },
+        stacked: false,
+        scales: {
+          yV: { type: 'linear', position: 'left', min: 0, max: 3.3, title:{display:true, text:'Tensão (V)'} },
+          yDuty: { type: 'linear', position: 'right', min: 0, max: 100, title:{display:true, text:'Duty (%)'} },
+          x: { title:{display:true, text:'Tempo (s)'} }
+        }
+      }
+    });
+
+    let t = 0; // tempo simulado em segundos
+    let logData = []; // Array para armazenar dados lidos
+
+    async function updateData() {
+      try {
+        const r = await fetch("/data"); // busca dados do endpoint /data
+        const d = await r.json(); // lê como JSON
+
+        document.getElementById("adc").innerText = d.adc;
+        document.getElementById("voltage").innerText = d.voltage.toFixed(2); // toFixed(2) para 2 casas decimais
+        document.getElementById("duty").innerText = d.duty.toFixed(1); // toFixed(1) para 1 casa decimal
+
+        // Atualiza gráfico e remove dados antigos se mais de 40 pontos
+        if (chart.data.labels.length > 40) {
+          chart.data.labels.shift();
+          chart.data.datasets[0].data.shift(); 
+          chart.data.datasets[1].data.shift();
+        }
+        // Adiciona novos dados
+        chart.data.labels.push(t.toFixed(1)); // tempo com 1 casa decimal
+        chart.data.datasets[0].data.push(d.voltage); // insere tensão
+        chart.data.datasets[1].data.push(d.duty); // insere duty
+
+        // Salva dado em log para exportar
+        logData.push([t.toFixed(1), d.duty.toFixed(1), d.adc, d.voltage.toFixed(3)]);
+
+        chart.update();
+        t += 0.01;
+      } catch(e) {
+        console.log("Erro ao buscar /data", e); // se não conseguir, mostra erro no console
+      }
+    }
+
+    // Botão para ajustar duty em malha aberta
+    document.getElementById("btnSet").addEventListener("click", async () => {
+      const val = Number(document.getElementById("dutyInp").value);
+      try {
+        const r = await fetch(`/set?duty=${encodeURIComponent(val.toFixed(1))}`); // envia novo duty
+        const j = await r.json(); // lê resposta JSON
+        document.getElementById("duty").innerText = j.duty.toFixed(1); // atualiza duty na tela
+      } catch(e) {
+        console.log("Erro ao ajustar duty", e);
+      }
+    });
+
+    // Botão para exportar CSV
+    function downloadCSV() {
+      let csv = "Tempo (s),Duty (%),ADC,Tensão (V)\n";
+      logData.forEach(row => {
+        csv += row.join(",") + "\n";
+      });
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "dados_planta.csv";
+      a.click();
+    }
+
+    setInterval(updateData, 10);
+  </script>
+</body>
+</html>
