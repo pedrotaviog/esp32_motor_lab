@@ -40,23 +40,30 @@ O sistema utiliza **PWM** para controle de potência e **ADC** para leitura da t
 ## 🔧 Como usar
 
 1. Clone o repositório:
+
    ```bash
    git clone https://github.com/pedrotaviog/esp32_motor_lab.git
    cd esp32_motor_lab
    ```
 
 2. Compile e grave no ESP32:
+
     ```bash
+    idf.py fullclean
     idf.py set-target esp32
     idf.py build
+    idf.py -p [SUA PORTA COM] flash
     idf.py flash monitor
     ```
+    💡 Substitua [SUA PORTA COM] pela porta serial do seu dispositivo (ex.: COM3 no Windows ou /dev/ttyUSB0 no Linux/macOS).
+
 3. Conecte-se à rede Wi-Fi gerada pelo ESP32:
 
   - SSID: ESP32_AP
   - Senha: 12345678
 
 4. Acesse a interface no navegador:
+
     ```bash
     http://192.168.4.1/
     ```
