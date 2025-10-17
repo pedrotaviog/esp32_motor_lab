@@ -18,8 +18,8 @@ end
 
 # Load bootloader symbols
 set confirm off
-    add-symbol-file C:/esp/projeto-controle/build/bootloader/bootloader.elf
+    add-symbol-file C:/esp32-projects/esp32_motor_lab/build/bootloader/bootloader.elf
 set confirm on
 
 # Load application symbols
-file C:/esp/projeto-controle/build/projeto-controle.elf
+file C:/esp32-projects/esp32_motor_lab/build/esp32_motor_lab.elf

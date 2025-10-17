@@ -6,7 +6,7 @@
 # It is included in the main 'build.ninja'.
 
 # =============================================================================
-# Project: projeto-controle
+# Project: esp32_motor_lab
 # Configurations: 
 # =============================================================================
 # =============================================================================
@@ -14,7 +14,7 @@
 #############################################
 # Rule for compiling C files.
 
-rule C_COMPILER__projeto-controle.2eelf_unscanned_
+rule C_COMPILER__esp32_motor_lab.2eelf_unscanned_
   depfile = $DEP_FILE
   deps = gcc
   command = ccache ${LAUNCHER}${CODE_CHECK}C:\Espressif\tools\xtensa-esp-elf\esp-14.2.0_20241119\xtensa-esp-elf\bin\xtensa-esp32-elf-gcc.exe $DEFINES $INCLUDES $FLAGS -MD -MT $out -MF $DEP_FILE -o $out -c $in
@@ -24,7 +24,7 @@ rule C_COMPILER__projeto-controle.2eelf_unscanned_
 #############################################
 # Rule for linking CXX executable.
 
-rule CXX_EXECUTABLE_LINKER__projeto-controle.2eelf_
+rule CXX_EXECUTABLE_LINKER__esp32_motor_lab.2eelf_
   command = C:\WINDOWS\system32\cmd.exe /C "$PRE_LINK && C:\Espressif\tools\xtensa-esp-elf\esp-14.2.0_20241119\xtensa-esp-elf\bin\xtensa-esp32-elf-g++.exe $FLAGS $LINK_FLAGS @$RSP_FILE -o $TARGET_FILE && $POST_BUILD"
   description = Linking CXX executable $TARGET_FILE
   rspfile = $RSP_FILE
@@ -1334,7 +1334,7 @@ rule C_STATIC_LIBRARY_LINKER____idf_main_
 # Rule for re-running cmake.
 
 rule RERUN_CMAKE
-  command = C:\Espressif\tools\cmake\3.30.2\bin\cmake.exe --regenerate-during-build -SC:\esp\projeto-controle -BC:\esp\projeto-controle\build
+  command = C:\Espressif\tools\cmake\3.30.2\bin\cmake.exe --regenerate-during-build -SC:\esp32-projects\esp32_motor_lab -BC:\esp32-projects\esp32_motor_lab\build
   description = Re-running CMake...
   generator = 1
 

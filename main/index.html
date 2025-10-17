@@ -68,7 +68,7 @@
       },
       options: {
         responsive: true,
-        animation: false, 
+        animation: false,
         interaction: { mode: 'index', intersect: false },
         stacked: false,
         scales: {
@@ -82,43 +82,57 @@
     let t = 0; // tempo simulado em segundos
     let logData = []; // Array para armazenar dados lidos
 
-    async function updateData() {
+    // Novo modo: busca lotes de dados do ESP32 e plota localmente
+    async function updateBatch() {
       try {
-        const r = await fetch("/data"); // busca dados do endpoint /data
-        const d = await r.json(); // lê como JSON
+        const r = await fetch("/data");
+        const d = await r.json();
 
-        document.getElementById("adc").innerText = d.adc;
-        document.getElementById("voltage").innerText = d.voltage.toFixed(2); // toFixed(2) para 2 casas decimais
-        document.getElementById("duty").innerText = d.duty.toFixed(1); // toFixed(1) para 1 casa decimal
+        // percorre vetor de amostras recebidas
+        for (const s of d.samples) {
+          const adc = Math.round(s.v * 4095 / 3.3); // estimativa do valor ADC
 
-        // Atualiza gráfico e remove dados antigos se mais de 40 pontos
-        if (chart.data.labels.length > 40) {
-          chart.data.labels.shift();
-          chart.data.datasets[0].data.shift(); 
-          chart.data.datasets[1].data.shift();
+          chart.data.labels.push(t.toFixed(2));
+          chart.data.datasets[0].data.push(s.v);
+          chart.data.datasets[1].data.push(s.d);
+
+          // salva no log para exportação posterior
+          logData.push([t.toFixed(2), s.d.toFixed(1), adc, s.v.toFixed(3)]);
+
+          t += 0.01; // 10 ms entre amostras
         }
-        // Adiciona novos dados
-        chart.data.labels.push(t.toFixed(1)); // tempo com 1 casa decimal
-        chart.data.datasets[0].data.push(d.voltage); // insere tensão
-        chart.data.datasets[1].data.push(d.duty); // insere duty
 
-        // Salva dado em log para exportar
-        logData.push([t.toFixed(1), d.duty.toFixed(1), d.adc, d.voltage.toFixed(3)]);
+        // mantém no máximo ~500 pontos visíveis
+        if (chart.data.labels.length > 500) {
+          chart.data.labels.splice(0, d.samples.length);
+          chart.data.datasets[0].data.splice(0, d.samples.length);
+          chart.data.datasets[1].data.splice(0, d.samples.length);
+        }
+
+        // pega o último valor das amostras e atualiza a interface
+        const last = d.samples.at(-1);
+        const lastAdc = Math.round(last.v * 4095 / 3.3);
+        document.getElementById("adc").innerText = lastAdc;
+        document.getElementById("voltage").innerText = last.v.toFixed(2);
+        document.getElementById("duty").innerText = last.d.toFixed(1);
 
         chart.update();
-        t += 0.01;
-      } catch(e) {
-        console.log("Erro ao buscar /data", e); // se não conseguir, mostra erro no console
+      } catch (e) {
+        console.log("Erro ao buscar /data", e);
       }
     }
+
+
+    // busca novo lote a cada 0,3 s
+    setInterval(updateBatch, 300);
 
     // Botão para ajustar duty em malha aberta
     document.getElementById("btnSet").addEventListener("click", async () => {
       const val = Number(document.getElementById("dutyInp").value);
       try {
-        const r = await fetch(`/set?duty=${encodeURIComponent(val.toFixed(1))}`); // envia novo duty
-        const j = await r.json(); // lê resposta JSON
-        document.getElementById("duty").innerText = j.duty.toFixed(1); // atualiza duty na tela
+        const r = await fetch(`/set?duty=${encodeURIComponent(val.toFixed(1))}`);
+        const j = await r.json();
+        document.getElementById("duty").innerText = j.duty.toFixed(1);
       } catch(e) {
         console.log("Erro ao ajustar duty", e);
       }
@@ -137,8 +151,6 @@
       a.download = "dados_planta.csv";
       a.click();
     }
-
-    setInterval(updateData, 10);
   </script>
 </body>
 </html>

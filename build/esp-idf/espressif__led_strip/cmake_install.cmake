@@ -1,8 +1,8 @@
-# Install script for directory: C:/esp/projeto-controle/managed_components/espressif__led_strip
+# Install script for directory: C:/esp32-projects/esp32_motor_lab/managed_components/espressif__led_strip
 
 # Set the install prefix
 if(NOT DEFINED CMAKE_INSTALL_PREFIX)
-  set(CMAKE_INSTALL_PREFIX "C:/Program Files (x86)/projeto-controle")
+  set(CMAKE_INSTALL_PREFIX "C:/Program Files (x86)/esp32_motor_lab")
 endif()
 string(REGEX REPLACE "/$" "" CMAKE_INSTALL_PREFIX "${CMAKE_INSTALL_PREFIX}")
 

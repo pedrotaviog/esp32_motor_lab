@@ -1,2 +1,2 @@
-source C:/esp/projeto-controle/build/bootloader/gdbinit/symbols
-source C:/esp/projeto-controle/build/bootloader/gdbinit/connect
+source C:/esp32-projects/esp32_motor_lab/build/bootloader/gdbinit/symbols
+source C:/esp32-projects/esp32_motor_lab/build/bootloader/gdbinit/connect

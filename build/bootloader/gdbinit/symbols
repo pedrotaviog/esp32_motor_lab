@@ -22,4 +22,4 @@ set confirm off
 set confirm on
 
 # Load application symbols
-file C:/esp/projeto-controle/build/bootloader/bootloader.elf
+file C:/esp32-projects/esp32_motor_lab/build/bootloader/bootloader.elf
