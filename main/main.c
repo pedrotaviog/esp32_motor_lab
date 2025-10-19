@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "freertos/semphr.h"
 #include "esp_wifi.h"
 #include "esp_event.h"
 #include "esp_log.h"
@@ -18,6 +19,19 @@
 #define PWM_TIMER       LEDC_TIMER_0
 #define PWM_MODE        LEDC_LOW_SPEED_MODE
 #define PWM_CHANNEL     LEDC_CHANNEL_0
+
+// ===== Buffer circular: coleta contínua a cada 10 ms =====
+#define BUF_N       2000    // ~20 s de histórico (2000 * 10 ms)
+#define BATCH_SIZE  10      // envia 10 amostras por /data (100 ms)
+
+typedef struct {
+    float v;    // tensão medida (V)
+    float d;    // duty (%) no instante da amostra
+} sample_t;
+
+static sample_t rb[BUF_N];
+static volatile uint32_t rb_head = 0;      // próximo índice de escrita
+static SemaphoreHandle_t rb_mutex = NULL;  // protege acesso ao buffer
 
 static uint32_t duty_raw = 0; // duty atual (0..1023 p/ resolução de 10 bits)
 static const char *TAG = "APP";
@@ -89,38 +103,45 @@ esp_err_t root_get_handler(httpd_req_t *req) {
     return httpd_resp_send(req, (const char *)index_html_start, index_html_size);
 }
 
-// envia lote JSON com várias amostras (batch mode)
+// envia as últimas BATCH_SIZE amostras (snapshot, sem bloquear)
 esp_err_t data_get_handler(httpd_req_t *req) {
-    #define BATCH_SIZE 30  // 30 amostras 
-    static float voltages[BATCH_SIZE];
-    static float duties[BATCH_SIZE];
+    float v_local[BATCH_SIZE];
+    float d_local[BATCH_SIZE];
 
-    // coleta 100 amostras espaçadas em 10 ms
-    for (int i = 0; i < BATCH_SIZE; i++) {
-        int adc_raw = 0;
-        adc_oneshot_read(adc1_handle, ADC_CHANNEL_3, &adc_raw);
-        voltages[i] = adc_raw * 3.3f / 4095.0f;
-        duties[i] = pwm_get_duty_percent();
-        vTaskDelay(pdMS_TO_TICKS(10)); // 10 ms entre leituras
+    // snapshot protegido por mutex
+    if (xSemaphoreTake(rb_mutex, pdMS_TO_TICKS(50)) != pdTRUE) {
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_sendstr(req, "{ \"samples\": [] }");
+        return ESP_OK;
     }
 
-    // começa a resposta JSON em partes (chunked)
+    uint32_t h = rb_head;
+    uint32_t start = (h + BUF_N - BATCH_SIZE) % BUF_N;
+    for (int i = 0; i < BATCH_SIZE; i++) {
+        uint32_t idx = (start + i) % BUF_N;
+        v_local[i] = rb[idx].v;
+        d_local[i] = rb[idx].d;
+    }
+    xSemaphoreGive(rb_mutex);
+
+    // monta JSON (chunked)
     httpd_resp_set_type(req, "application/json");
     httpd_resp_sendstr_chunk(req, "{ \"samples\": [");
 
     for (int i = 0; i < BATCH_SIZE; i++) {
         char buf[64];
         snprintf(buf, sizeof(buf),
-                 "{\"v\":%.3f, \"d\":%.1f}%s",
-                 voltages[i], duties[i],
+                 "{\"v\":%.3f,\"d\":%.1f}%s",
+                 v_local[i], d_local[i],
                  (i < BATCH_SIZE - 1) ? "," : "");
         httpd_resp_sendstr_chunk(req, buf);
     }
 
     httpd_resp_sendstr_chunk(req, "] }");
-    httpd_resp_sendstr_chunk(req, NULL); // encerra resposta
+    httpd_resp_sendstr_chunk(req, NULL);
     return ESP_OK;
 }
+
 
 // recebe /set?duty=XX.X para atualizar o PWM
 esp_err_t set_get_handler(httpd_req_t *req) {
@@ -206,15 +227,31 @@ void wifi_init_softap(void) {
 
 // Task de controle (ADC + log)
 void task_control(void *pvParameters) {
+    uint32_t i = 0;
     while (1) {
         int adc_raw = 0;
         adc_oneshot_read(adc1_handle, ADC_CHANNEL_3, &adc_raw);
-        float voltage = adc_raw * 3.3 / 4095.0;
+        float voltage = adc_raw * 3.3f / 4095.0f;
         float duty = pwm_get_duty_percent();
-        ESP_LOGI("CTRL", "ADC raw: %d, V: %.3f, Duty: %.1f%%", adc_raw, voltage, duty);
-        vTaskDelay(pdMS_TO_TICKS(10)); // lê a cada 10 ms
+
+        // grava no ring buffer
+        if (xSemaphoreTake(rb_mutex, portMAX_DELAY) == pdTRUE) {
+            rb[rb_head].v = voltage;
+            rb[rb_head].d = duty;
+            rb_head = (rb_head + 1) % BUF_N;
+            xSemaphoreGive(rb_mutex);
+        }
+
+        // (opcional) log esparso para não travar I/O
+        if ((i++ % 100) == 0) { // ~1 s
+            ESP_LOGI("CTRL", "V=%.3f V | Duty=%.1f%% | head=%lu",
+                     voltage, duty, (unsigned long)rb_head);
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(10)); // 10 ms entre amostras
     }
 }
+
 
 // Task do servidor (HTTP)
 void task_server(void *pvParameters) {
@@ -229,8 +266,10 @@ void app_main(void) {
     adc_init();
     pwm_init();
     pwm_set_duty_percent(40.0f);   // malha aberta inicial em 40%
+    rb_mutex = xSemaphoreCreateMutex();
+    configASSERT(rb_mutex != NULL);
 
     // Cria tasks fixadas em núcleos diferentes
     xTaskCreatePinnedToCore(task_control, "task_control", 4096, NULL, 5, NULL, 1); // Core 1
-    xTaskCreatePinnedToCore(task_server,  "task_server",  8192, NULL, 5, NULL, 0); // Core 0
+    xTaskCreatePinnedToCore(task_server,  "task_server",  8192, NULL, 6, NULL, 0); // Core 0
 }

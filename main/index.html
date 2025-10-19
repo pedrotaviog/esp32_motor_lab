@@ -116,15 +116,11 @@
         document.getElementById("voltage").innerText = last.v.toFixed(2);
         document.getElementById("duty").innerText = last.d.toFixed(1);
 
-        chart.update();
+        chart.update('none');
       } catch (e) {
         console.log("Erro ao buscar /data", e);
       }
     }
-
-
-    // busca novo lote a cada 0,3 s
-    setInterval(updateBatch, 300);
 
     // Botão para ajustar duty em malha aberta
     document.getElementById("btnSet").addEventListener("click", async () => {
@@ -151,6 +147,13 @@
       a.download = "dados_planta.csv";
       a.click();
     }
+
+    // Aguarda 300 ms antes de começar a atualizar (garante 3 ciclos de coleta)
+    setTimeout(() => {
+      setInterval(updateBatch, 100); // pede /data a cada 100 ms (10 amostras)
+    }, 300);
+
+
   </script>
 </body>
 </html>
